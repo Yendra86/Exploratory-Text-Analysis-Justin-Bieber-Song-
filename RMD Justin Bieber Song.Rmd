@@ -1,0 +1,338 @@
+---
+title: "Projek 2 VDE"
+author: "Fadhel,Yendra,Akmal,Bryant,Abdillah"
+date: "2024-06-07"
+output:pdf_document: true
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(wordcloud2)
+library(textclean)
+library(tokenizers)
+library(tidytext)
+library(formattable)
+library(kableExtra)
+```
+
+
+
+```{r bersih-bersih}
+# Install and load necessary library
+data=read.csv("C:\\Users\\ASUS\\OneDrive\\Documents\\coolyeah\\Visualisasi Data Eksploratori\\JustinBieber.csv")
+install.packages("textclean")
+head(data)
+library(textclean)
+
+# Replace contractions in the lyrics
+data$Lyric <- sapply(data$Lyric, replace_contraction)
+
+# Replace "n'" with "ng"
+data$Lyric <- gsub("n'", "ng", data$Lyric)
+
+# Function to remove special characters
+removeSpecialChars <- function(x) gsub("[^a-zA-Z0-9 ]", " ", x)
+
+# Apply the function to remove special characters
+data$Lyric <- sapply(data$Lyric, removeSpecialChars)
+
+# Convert all text to lowercase
+data$Lyric <- tolower(data$Lyric)
+
+# Add a decade column based on the year
+data <- data %>%
+  mutate(decade = ifelse(Year %in% 2000:2009, "2000s",
+                 ifelse(Year %in% 2010:2019, "2010s",
+                 ifelse(Year %in% 2020:2029, "2020s", "NA"))))
+
+# Add a column to indicate whether a song is in an album
+data <- data %>%
+  mutate(Ket_Album = ifelse(Album == "", "Not in an Album", "Album"))
+
+# Re-indexing the dataset
+data$X <- 1:nrow(data)
+
+# Display the first few rows of the cleaned data
+head(data)
+
+
+```
+
+```{r mengekspor}
+write.csv(data, "Justin_Clear.csv")
+```
+
+```{r}
+data %>%
+  filter(decade != "NA") %>%
+  group_by(decade, Ket_Album) %>%
+  summarise(number_of_songs = n(), .groups = 'drop') %>%
+  ggplot(aes(x = decade, y = number_of_songs, fill = Ket_Album)) +
+  geom_col() +
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank()) +
+  labs(x = NULL, y = "Song Count") +
+  ggtitle("All Songs in Data")
+```
+
+```{r word frequency}
+full_word_count <- data %>%
+  unnest_tokens(word, Lyric) %>%
+  group_by(Title, Ket_Album) %>%
+  summarise(num_words = n()) %>%
+  arrange(desc(num_words))
+```
+## Word Frequency
+
+```{r}
+install.packages("kableExtra")
+install.packages("formattable")
+
+# Memuat paket yang diperlukan
+library(dplyr)
+library(ggplot2)
+library(kableExtra)
+library(formattable)
+
+
+
+library(kableExtra)
+
+full_word_count[1:8,] %>%
+  ungroup(num_words, Title) %>%
+  mutate(num_words = color_bar("#F8F9D7")(num_words)) %>%
+  mutate(Title = color_tile("#E49BFF","#C738BD")(Title)) %>%
+  kable("html", escape = FALSE, align = "c", caption = "Songs With Highest Word Count") %>%
+  kable_styling(bootstrap_options = 
+                  c("striped", "condensed", "bordered"), 
+                  full_width = FALSE)
+
+```
+
+```{r}
+full_word_count %>%
+  ggplot() +
+    geom_histogram(aes(x = num_words, fill = Ket_Album )) +
+    ylab("Song Count") + 
+    xlab("Word Count per Song") +
+    ggtitle("Word Count Distribution") +
+    theme(plot.title = element_text(hjust = 0.5),
+          legend.title = element_blank(),
+          panel.grid.minor.y = element_blank())
+```
+
+```{r}
+undesirableWords <- c("prince", "chorus", "repeat", "lyrics", 
+                       "theres", "bridge", "fe0f", "yeah", "baby", 
+                       "alright", "wanna", "gonna", "chorus", "verse", 
+                       "whoa", "gotta", "make", "miscellaneous", "2", 
+                       "4", "ooh", "uurh", "pheromone", "poompoom", "3121", 
+                       "matic", " ai ", " ca ", " la ", "hey", " na ", 
+                       " da ", " uh ", " tin ", "  ll", "transcription",
+                       "repeats","lolololololololololololololololove","differentferentferentferent")
+
+Justin_words_filtered <- data %>%
+  unnest_tokens(word, Lyric) %>%
+  anti_join(stop_words) %>%
+  distinct() %>%
+  filter(!word %in% undesirableWords) %>%
+  filter(nchar(word) > 3)
+```
+
+```{r}
+win.graph() # Gunakan ini jika Anda menggunakan Windows, jika tidak, lewati langkah ini.
+Justin_words_filtered %>%
+  count(word, sort = TRUE) %>%
+  slice_max(n, n = 10) %>%
+  ungroup() %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n, fill = n)) +
+    geom_col(color = "black") +
+    scale_fill_gradient(low = "#E49BFF", high = "#C738BD") +
+    theme(legend.position = "none", 
+          plot.title = element_text(hjust = 0.5),
+          panel.grid.major = element_blank()) +
+    xlab("") + 
+    ylab("Song Count") +
+    ggtitle("Most Frequently Used Words in Justin Lyrics") +
+    coord_flip()
+```
+## Word Lenghts
+
+```{r}
+install.packages("tidytext")
+library("tidytext")
+library("dplyr")
+Justin_word_lengths <- data %>%
+  unnest_tokens(word, Lyric) %>%
+  group_by(Title,decade) %>%
+  distinct() %>%
+  filter(!word %in% undesirableWords) %>%
+  mutate(word_length = nchar(word)) 
+
+library("ggplot2")
+Justin_word_lengths %>%
+  count(word_length, sort = TRUE) %>%
+  ggplot(aes(x = word_length)) + 
+  geom_histogram(aes(fill = ..count..), 
+                 binwidth = 2, 
+                 color = "black", 
+                 breaks = seq(1, 25, by = 2), 
+                 show.legend = FALSE) +
+  scale_fill_gradient(low = "#E49BFF", high = "#C738BD") +
+  xlab("Word Length") + 
+  ylab("Word Count") +
+  ggtitle("Word Length Distribution") +
+  theme(plot.title = element_text(hjust = 0.5),
+        panel.grid.minor = element_blank())
+```
+```{r}
+Justin_word_lengths <- data %>%
+  unnest_tokens(word, Lyric) %>%
+  group_by(Title) %>%
+  distinct() %>%
+  filter(!word %in% undesirableWords) %>%
+  mutate(word_length = nchar(word))
+
+# Plot frequency polygon with area underneath
+Justin_word_lengths %>%
+  count(word_length, sort = TRUE) %>%
+  filter(word_length < 30) %>%
+  ggplot(aes(x = word_length, y = ..count..)) +
+  geom_freqpoly(binwidth = 2, color = "#6A3D9A", size = 1, fill = "#6A3D9A", alpha = 0.2, position = "identity") +
+  geom_area(stat = "bin", aes(y = ..count..), binwidth = 2, fill = "#850F8D", alpha = 0.2) +
+  scale_x_continuous(breaks = seq(1, 25, by = 2)) +
+  xlab("Word Length") + 
+  ylab("Frequency") +
+  ggtitle("Frequency Polygon of Word Length with Area") +
+  theme_minimal()
+```
+
+```{r buat wordcloud}
+library("tm")
+docs <- Corpus(VectorSource(data))
+inspect(docs)
+
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+docs <- tm_map(docs, toSpace, "/")
+docs <- tm_map(docs, toSpace, "@")
+docs <- tm_map(docs, toSpace, "\\|")
+
+# Convert the text to lower case
+docs <- tm_map(docs, content_transformer(tolower))
+# Remove numbers
+docs <- tm_map(docs, removeNumbers)
+# Remove english common stopwords
+docs <- tm_map(docs, removeWords, stopwords("english"))
+# Remove your own stop word
+# specify your stopwords as a character vector
+docs <- tm_map(docs, removeWords, c("yeah", "bieber","justin","babi","can","will","know","let","like","beralbum","wanna","tidak","caus")) 
+# Remove punctuations
+docs <- tm_map(docs, removePunctuation)
+# Eliminate extra white spaces
+docs <- tm_map(docs, stripWhitespace)
+# Text stemming
+docs <- tm_map(docs, stemDocument)
+
+dtm <- TermDocumentMatrix(docs)
+m <- as.matrix(dtm)
+v <- sort(rowSums(m),decreasing=TRUE)
+d <- data.frame(word = names(v),freq=v)
+head(d, 10)
+
+set.seed(1234)
+library(wordcloud)
+
+win.graph()
+library(wordcloud)
+library(RColorBrewer)
+
+# Mengatur latar belakang menjadi warna lightgrey
+par(bg = "#850F8D")
+
+# Membuat wordcloud
+wordcloud(words = d$word, freq = d$freq, min.freq = 2,
+          max.words = 300, random.order = FALSE, rot.per = 0.35, 
+          colors = brewer.pal(8, "Pastel1"), family = "Aptos")
+
+```
+
+```{r}
+library("wordcloud2")
+wc <- Justin_word_lengths %>%
+  ungroup() %>%
+  select(word, word_length) %>%
+  distinct() %>%
+  arrange(desc(word_length))
+
+win.graph()
+wordcloud2(wc[1:200, ], 
+           size = 1,  # Ukuran lebih besar
+           minSize = 0.3,  # Ukuran minimum kata yang lebih besar
+           ellipticity = 0.6,  # Membuat bentuk elips lebih tinggi
+           rotateRatio = 0.5,  # Kombinasi kata yang diputar dan tidak diputar
+           fontWeight = "bold",  # Teks tebal
+           color = 'random-light',  # Warna acak dari palet warna terang
+           backgroundColor = "black",  # Latar belakang hitam untuk kontras
+           shape = "square")
+```
+
+## Lexical Diversity
+
+```{r}
+lex_diversity_per_year <- data %>%
+  filter(decade != "NA") %>%
+  unnest_tokens(word, Lyric) %>%
+  group_by(Title,Year) %>%
+  summarise(lex_diversity = n_distinct(word)) %>%
+  arrange(desc(lex_diversity))
+
+diversity_plot <- lex_diversity_per_year %>%
+  ggplot(aes(Year, lex_diversity)) +
+    geom_point(alpha = .4,
+               color = "#850F8D",
+               size = 4, 
+               position = "jitter") + 
+    stat_smooth(color = "black", se = FALSE, method = "lm") +
+    geom_smooth(aes(x = Year, y = lex_diversity), se = FALSE,
+                color = "#E49BFF", lwd = 1) +
+    ggtitle("Lexical Diversity") +
+    xlab("Years") + 
+    ylab("") +
+    theme_classic()
+
+diversity_plot
+```
+
+## Lexical Density
+
+```{r}
+lex_density_per_year <- data %>%
+  filter(decade != "NA") %>%
+  unnest_tokens(word, Lyric) %>%
+  group_by(Title,Year) %>%
+  summarise(lex_density = n_distinct(word)/n()) %>%
+  arrange(desc(lex_density))
+
+density_plot <- lex_density_per_year %>%
+  ggplot(aes(Year, lex_density)) + 
+    geom_point(color = "#850F8D",
+               alpha = .4, 
+               size = 4, 
+               position = "jitter") + 
+    stat_smooth(color = "black", 
+                se = FALSE, 
+                method = "lm") +
+    geom_smooth(aes(x = Year, y = lex_density), 
+                se = FALSE,
+                color = "#E49BFF", 
+                lwd = 2) +
+    ggtitle("Lexical Density") + 
+    xlab("Years") + 
+    ylab("") +
+    theme_classic()
+
+density_plot
+```
